@@ -25,25 +25,6 @@ class Solution:
 
 The comment prefix adapts to the selected language (`#` for Python, `//` for Java/C++/JS, etc.).
 
-## Installation
-
-### Firefox
-
-1. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
-2. Click **"Load Temporary Add-on..."**
-3. Navigate into the `leetcode-copier` folder and select the **`manifest.json`** file
-4. The extension is now active — go to any LeetCode problem page and you'll see the orange floating button!
-
-> **Note:** Temporary add-ons are removed when you close Firefox. To make it permanent, you'd need to package and sign the extension via [addons.mozilla.org](https://addons.mozilla.org).
-
-### Chrome
-
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable **Developer mode** (toggle in the top-right corner)
-3. Click **"Load unpacked"**
-4. Select this `leetcode-copier` folder
-5. Navigate to any LeetCode problem — you'll see the orange floating button in the bottom-right!
-
 ## How It Works
 
 - **Floating Button**: Appears on every `/problems/*` page. Hover to expand, click to copy.
@@ -56,16 +37,3 @@ The comment prefix adapts to the selected language (`#` for Python, `//` for Jav
 
 Python, Java, C++, C, C#, JavaScript, TypeScript, Go, Rust, Swift, Kotlin, Ruby, Scala, PHP, Dart, Racket, Erlang, Elixir.
 
-## Files
-
-```
-leetcode-copier/
-├── manifest.json    # Extension manifest (Manifest V3)
-├── content.js       # Content script — extraction & copy logic
-├── content.css      # Floating button & toast styles
-├── icons/
-│   ├── icon16.png
-│   ├── icon48.png
-│   └── icon128.png
-└── README.md
-```
