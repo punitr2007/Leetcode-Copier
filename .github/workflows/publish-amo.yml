@@ -44,7 +44,7 @@ jobs:
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: 📦 Install Dependencies
         run: |
@@ -91,16 +91,20 @@ jobs:
         id: amo_sign
         if: ${{ github.event_name != 'pull_request' && inputs.dry_run != true }}
         env:
-          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
-          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER || vars.AMO_JWT_ISSUER || secrets.AMO_API_KEY || vars.AMO_API_KEY || secrets.AMO_ISSUER || vars.AMO_ISSUER || secrets.JWT_ISSUER || vars.JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET || vars.AMO_JWT_SECRET || secrets.AMO_API_SECRET || vars.AMO_API_SECRET || secrets.AMO_SECRET || vars.AMO_SECRET || secrets.JWT_SECRET || vars.JWT_SECRET }}
           CHANNEL: ${{ inputs.channel || 'listed' }}
           APPROVAL_NOTES: ${{ inputs.approval_notes || '' }}
         run: |
           echo "::group::Publishing to Mozilla Add-ons (${CHANNEL} channel)"
           
+          echo "Diagnostic Credential Check:"
+          echo " - AMO_JWT_ISSUER: $([ -n "$AMO_JWT_ISSUER" ] && echo 'FOUND (length '${#AMO_JWT_ISSUER}')' || echo 'MISSING')"
+          echo " - AMO_JWT_SECRET: $([ -n "$AMO_JWT_SECRET" ] && echo 'FOUND (length '${#AMO_JWT_SECRET}')' || echo 'MISSING')"
+
           if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
-            echo "::error::Missing AMO_JWT_ISSUER or AMO_JWT_SECRET repository secret!"
-            echo "Please configure AMO_JWT_ISSUER and AMO_JWT_SECRET in Repository Settings -> Secrets and variables -> Actions" > web-ext-artifacts/amo-sign-error.log
+            echo "::error::Missing AMO credentials! Please check Settings -> Secrets and variables -> Actions -> 'Repository secrets' or 'Variables'."
+            echo "Ensure AMO_JWT_ISSUER and AMO_JWT_SECRET are added as Repository secrets (or Variables) in GitHub repo settings." > web-ext-artifacts/amo-sign-error.log
             exit 1
           fi
 
