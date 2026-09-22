@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Web-ext output & build artifacts
+web-ext-artifacts/
+amo-lint-report.json
+amo-sign-output.log
+amo-sign-error.log
+*.log
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

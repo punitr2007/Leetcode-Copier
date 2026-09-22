@@ -1,0 +1,25 @@
+{
+  "name": "leetcode-copier",
+  "version": "1.2.0",
+  "description": "Copy LeetCode problem description, starter code, and local LLM (LM Studio) Time & Space Complexity analysis to clipboard.",
+  "scripts": {
+    "lint": "web-ext lint",
+    "lint:strict": "web-ext lint --warnings-as-errors=true",
+    "lint:json": "web-ext lint --output json > amo-lint-report.json || true",
+    "build": "web-ext build --overwrite-dest",
+    "sign:listed": "web-ext sign --channel=listed",
+    "sign:unlisted": "web-ext sign --channel=unlisted"
+  },
+  "keywords": [
+    "leetcode",
+    "firefox-addon",
+    "webextension",
+    "lm-studio",
+    "ai-complexity"
+  ],
+  "author": "punit",
+  "license": "MIT",
+  "devDependencies": {
+    "web-ext": "^8.3.0"
+  }
+}

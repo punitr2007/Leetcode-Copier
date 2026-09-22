@@ -1,0 +1,146 @@
+name: Publish Firefox Add-on to AMO
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Mozilla Add-on Release Channel'
+        required: true
+        type: choice
+        default: 'listed'
+        options:
+          - 'listed'
+          - 'unlisted'
+      dry_run:
+        description: 'Dry Run (validate and build only, do not submit to AMO)'
+        required: false
+        type: boolean
+        default: false
+      approval_notes:
+        description: 'Notes for Mozilla Human Reviewers (Optional)'
+        required: false
+        type: string
+        default: ''
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-publish:
+    name: Build, Lint & Publish to Firefox Add-ons
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📦 Install Dependencies
+        run: |
+          if [ -f "package-lock.json" ]; then
+            npm ci
+          else
+            npm install
+          fi
+          mkdir -p web-ext-artifacts
+
+      - name: 🏷️ Extract Extension Metadata
+        id: meta
+        run: |
+          EXT_VERSION=$(node -p "require('./manifest.json').version")
+          EXT_NAME=$(node -p "require('./manifest.json').name")
+          EXT_ID=$(node -p "require('./manifest.json').browser_specific_settings?.gecko?.id || 'N/A'")
+          echo "version=${EXT_VERSION}" >> $GITHUB_OUTPUT
+          echo "name=${EXT_NAME}" >> $GITHUB_OUTPUT
+          echo "id=${EXT_ID}" >> $GITHUB_OUTPUT
+          echo "Extension: $EXT_NAME v$EXT_VERSION (ID: $EXT_ID)"
+
+      - name: 🔍 Run Mozilla Validator & Linter (JSON Export)
+        id: lint_json
+        run: |
+          echo "::group::Running web-ext linter with JSON export"
+          npx web-ext lint --config=web-ext.config.cjs --output json > web-ext-artifacts/amo-lint-report.json || true
+          echo "::endgroup::"
+
+      - name: 🛡️ Strict Linter Check (Console)
+        id: lint_strict
+        run: |
+          echo "::group::Running strict web-ext lint check"
+          npx web-ext lint --config=web-ext.config.cjs --warnings-as-errors=false
+          echo "::endgroup::"
+
+      - name: 🔨 Package Web Extension Bundle
+        run: |
+          echo "::group::Building extension zip archive"
+          npx web-ext build --config=web-ext.config.cjs
+          ls -la web-ext-artifacts/
+          echo "::endgroup::"
+
+      - name: 🚀 Submit & Sign on Mozilla Add-ons (AMO)
+        id: amo_sign
+        if: ${{ github.event_name != 'pull_request' && inputs.dry_run != true }}
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          CHANNEL: ${{ inputs.channel || 'listed' }}
+          APPROVAL_NOTES: ${{ inputs.approval_notes || '' }}
+        run: |
+          echo "::group::Publishing to Mozilla Add-ons (${CHANNEL} channel)"
+          
+          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::error::Missing AMO_JWT_ISSUER or AMO_JWT_SECRET repository secret!"
+            echo "Please configure AMO_JWT_ISSUER and AMO_JWT_SECRET in Repository Settings -> Secrets and variables -> Actions" > web-ext-artifacts/amo-sign-error.log
+            exit 1
+          fi
+
+          SIGN_CMD="npx web-ext sign --config=web-ext.config.cjs --api-key=\"$AMO_JWT_ISSUER\" --api-secret=\"$AMO_JWT_SECRET\" --channel=\"$CHANNEL\" --timeout=15m"
+          
+          if [ -n "$APPROVAL_NOTES" ]; then
+            SIGN_CMD="$SIGN_CMD --approval-notes=\"$APPROVAL_NOTES\""
+          fi
+
+          # Execute sign command and capture stdout and stderr
+          set +e
+          eval $SIGN_CMD > >(tee web-ext-artifacts/amo-sign-output.log) 2> >(tee web-ext-artifacts/amo-sign-error.log >&2)
+          SIGN_EXIT_CODE=$?
+          set -e
+
+          echo "SIGN_EXIT_CODE=${SIGN_EXIT_CODE}" >> $GITHUB_ENV
+          echo "::endgroup::"
+
+      - name: 📊 Parse Marketplace Errors & Generate Step Summary
+        if: always()
+        run: |
+          node scripts/report-amo-status.js
+
+      - name: 💾 Upload Build & Error Logs Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amo-build-and-diagnostic-artifacts-v${{ steps.meta.outputs.version }}-${{ github.run_number }}
+          path: |
+            web-ext-artifacts/
+          retention-days: 30
+
+      - name: 🚀 Create GitHub Release (On Tag Push)
+        uses: softprops/action-gh-release@v2
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' }}
+        with:
+          name: Release v${{ steps.meta.outputs.version }}
+          generate_release_notes: true
+          files: |
+            web-ext-artifacts/*.zip
+            web-ext-artifacts/*.xpi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
