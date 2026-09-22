@@ -91,24 +91,53 @@ jobs:
         id: amo_sign
         if: ${{ github.event_name != 'pull_request' && inputs.dry_run != true }}
         env:
-          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER || vars.AMO_JWT_ISSUER || secrets.AMO_API_KEY || vars.AMO_API_KEY || secrets.AMO_ISSUER || vars.AMO_ISSUER || secrets.JWT_ISSUER || vars.JWT_ISSUER }}
-          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET || vars.AMO_JWT_SECRET || secrets.AMO_API_SECRET || vars.AMO_API_SECRET || secrets.AMO_SECRET || vars.AMO_SECRET || secrets.JWT_SECRET || vars.JWT_SECRET }}
+          SEC_ISSUER_1: ${{ secrets.AMO_JWT_ISSUER }}
+          SEC_SECRET_1: ${{ secrets.AMO_JWT_SECRET }}
+          VAR_ISSUER_1: ${{ vars.AMO_JWT_ISSUER }}
+          VAR_SECRET_1: ${{ vars.AMO_JWT_SECRET }}
+          SEC_ISSUER_2: ${{ secrets.JWT_ISSUER }}
+          SEC_SECRET_2: ${{ secrets.JWT_SECRET }}
+          VAR_ISSUER_2: ${{ vars.JWT_ISSUER }}
+          VAR_SECRET_2: ${{ vars.JWT_SECRET }}
+          SEC_ISSUER_3: ${{ secrets.AMO_API_KEY }}
+          SEC_SECRET_3: ${{ secrets.AMO_API_SECRET }}
           CHANNEL: ${{ inputs.channel || 'listed' }}
           APPROVAL_NOTES: ${{ inputs.approval_notes || '' }}
         run: |
           echo "::group::Publishing to Mozilla Add-ons (${CHANNEL} channel)"
           
-          echo "Diagnostic Credential Check:"
-          echo " - AMO_JWT_ISSUER: $([ -n "$AMO_JWT_ISSUER" ] && echo 'FOUND (length '${#AMO_JWT_ISSUER}')' || echo 'MISSING')"
-          echo " - AMO_JWT_SECRET: $([ -n "$AMO_JWT_SECRET" ] && echo 'FOUND (length '${#AMO_JWT_SECRET}')' || echo 'MISSING')"
+          # Resolve credentials using pure bash string fallback
+          AMO_ISSUER="${SEC_ISSUER_1:-${VAR_ISSUER_1:-${SEC_ISSUER_2:-${VAR_ISSUER_2:-${SEC_ISSUER_3}}}}}"
+          AMO_SECRET="${SEC_SECRET_1:-${VAR_SECRET_1:-${SEC_SECRET_2:-${VAR_SECRET_2:-${SEC_SECRET_3}}}}}"
 
-          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
-            echo "::error::Missing AMO credentials! Please check Settings -> Secrets and variables -> Actions -> 'Repository secrets' or 'Variables'."
-            echo "Ensure AMO_JWT_ISSUER and AMO_JWT_SECRET are added as Repository secrets (or Variables) in GitHub repo settings." > web-ext-artifacts/amo-sign-error.log
+          echo "🔍 Diagnostic Credential Check:"
+          if [ -n "$SEC_ISSUER_1" ]; then
+            echo " - AMO_JWT_ISSUER: FOUND in Repository Secrets (length: ${#SEC_ISSUER_1})"
+          elif [ -n "$VAR_ISSUER_1" ]; then
+            echo " - AMO_JWT_ISSUER: FOUND in Repository Variables (length: ${#VAR_ISSUER_1})"
+          elif [ -n "$AMO_ISSUER" ]; then
+            echo " - AMO_JWT_ISSUER: FOUND via alias (length: ${#AMO_ISSUER})"
+          else
+            echo " - AMO_JWT_ISSUER: ❌ MISSING"
+          fi
+
+          if [ -n "$SEC_SECRET_1" ]; then
+            echo " - AMO_JWT_SECRET: FOUND in Repository Secrets (length: ${#SEC_SECRET_1})"
+          elif [ -n "$VAR_SECRET_1" ]; then
+            echo " - AMO_JWT_SECRET: FOUND in Repository Variables (length: ${#VAR_SECRET_1})"
+          elif [ -n "$AMO_SECRET" ]; then
+            echo " - AMO_JWT_SECRET: FOUND via alias (length: ${#AMO_SECRET})"
+          else
+            echo " - AMO_JWT_SECRET: ❌ MISSING"
+          fi
+
+          if [ -z "$AMO_ISSUER" ] || [ -z "$AMO_SECRET" ]; then
+            echo "::error::Missing AMO credentials in GitHub Actions!"
+            echo "Please ensure AMO_JWT_ISSUER and AMO_JWT_SECRET are added under GitHub Repository Settings -> Secrets and variables -> Actions -> 'Repository secrets'." > web-ext-artifacts/amo-sign-error.log
             exit 1
           fi
 
-          SIGN_CMD="npx web-ext sign --config=web-ext.config.cjs --api-key=\"$AMO_JWT_ISSUER\" --api-secret=\"$AMO_JWT_SECRET\" --channel=\"$CHANNEL\" --timeout=15m"
+          SIGN_CMD="npx web-ext sign --config=web-ext.config.cjs --api-key=\"$AMO_ISSUER\" --api-secret=\"$AMO_SECRET\" --channel=\"$CHANNEL\" --timeout=15m"
           
           if [ -n "$APPROVAL_NOTES" ]; then
             SIGN_CMD="$SIGN_CMD --approval-notes=\"$APPROVAL_NOTES\""
