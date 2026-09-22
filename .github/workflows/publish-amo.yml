@@ -21,6 +21,16 @@ on:
         required: false
         type: string
         default: ''
+      amo_jwt_issuer:
+        description: 'AMO JWT Issuer Override (Optional - e.g. user:19938542:65)'
+        required: false
+        type: string
+        default: ''
+      amo_jwt_secret:
+        description: 'AMO JWT Secret Override (Optional)'
+        required: false
+        type: string
+        default: ''
   push:
     tags:
       - 'v*'
@@ -91,6 +101,8 @@ jobs:
         id: amo_sign
         if: ${{ github.event_name != 'pull_request' && inputs.dry_run != true }}
         env:
+          INPUT_ISSUER: ${{ inputs.amo_jwt_issuer }}
+          INPUT_SECRET: ${{ inputs.amo_jwt_secret }}
           SEC_ISSUER_1: ${{ secrets.AMO_JWT_ISSUER }}
           SEC_SECRET_1: ${{ secrets.AMO_JWT_SECRET }}
           VAR_ISSUER_1: ${{ vars.AMO_JWT_ISSUER }}
@@ -107,11 +119,13 @@ jobs:
           echo "::group::Publishing to Mozilla Add-ons (${CHANNEL} channel)"
           
           # Resolve credentials using pure bash string fallback
-          AMO_ISSUER="${SEC_ISSUER_1:-${VAR_ISSUER_1:-${SEC_ISSUER_2:-${VAR_ISSUER_2:-${SEC_ISSUER_3}}}}}"
-          AMO_SECRET="${SEC_SECRET_1:-${VAR_SECRET_1:-${SEC_SECRET_2:-${VAR_SECRET_2:-${SEC_SECRET_3}}}}}"
+          AMO_ISSUER="${INPUT_ISSUER:-${SEC_ISSUER_1:-${VAR_ISSUER_1:-${SEC_ISSUER_2:-${VAR_ISSUER_2:-${SEC_ISSUER_3}}}}}}"
+          AMO_SECRET="${INPUT_SECRET:-${SEC_SECRET_1:-${VAR_SECRET_1:-${SEC_SECRET_2:-${VAR_SECRET_2:-${SEC_SECRET_3}}}}}}"
 
           echo "🔍 Diagnostic Credential Check:"
-          if [ -n "$SEC_ISSUER_1" ]; then
+          if [ -n "$INPUT_ISSUER" ]; then
+            echo " - AMO_JWT_ISSUER: FOUND from manual workflow input (length: ${#INPUT_ISSUER})"
+          elif [ -n "$SEC_ISSUER_1" ]; then
             echo " - AMO_JWT_ISSUER: FOUND in Repository Secrets (length: ${#SEC_ISSUER_1})"
           elif [ -n "$VAR_ISSUER_1" ]; then
             echo " - AMO_JWT_ISSUER: FOUND in Repository Variables (length: ${#VAR_ISSUER_1})"
@@ -121,7 +135,9 @@ jobs:
             echo " - AMO_JWT_ISSUER: ❌ MISSING"
           fi
 
-          if [ -n "$SEC_SECRET_1" ]; then
+          if [ -n "$INPUT_SECRET" ]; then
+            echo " - AMO_JWT_SECRET: FOUND from manual workflow input (length: ${#INPUT_SECRET})"
+          elif [ -n "$SEC_SECRET_1" ]; then
             echo " - AMO_JWT_SECRET: FOUND in Repository Secrets (length: ${#SEC_SECRET_1})"
           elif [ -n "$VAR_SECRET_1" ]; then
             echo " - AMO_JWT_SECRET: FOUND in Repository Variables (length: ${#VAR_SECRET_1})"
