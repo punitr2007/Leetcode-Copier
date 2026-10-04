@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LeetCode Problem Copier",
   "version": "1.20.1",
-  "description": "Copy LeetCode problem description, starter code, and local LLM (LM Studio) Time & Space Complexity analysis to clipboard.",
+  "description": "1-click export for LeetCode problems & starter code with local offline AI Time and Space Complexity analysis (LM Studio).",
   "permissions": [
     "activeTab",
     "storage"
