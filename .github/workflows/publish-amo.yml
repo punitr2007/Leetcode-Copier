@@ -80,20 +80,20 @@ jobs:
         id: lint_json
         run: |
           echo "::group::Running web-ext linter with JSON export"
-          npx web-ext lint --config=web-ext.config.cjs --output json > web-ext-artifacts/amo-lint-report.json || true
+          npx web-ext lint --output json > web-ext-artifacts/amo-lint-report.json || true
           echo "::endgroup::"
 
       - name: 🛡️ Strict Linter Check (Console)
         id: lint_strict
         run: |
           echo "::group::Running strict web-ext lint check"
-          npx web-ext lint --config=web-ext.config.cjs --warnings-as-errors=false
+          npx web-ext lint --warnings-as-errors=false
           echo "::endgroup::"
 
       - name: 🔨 Package Web Extension Bundle
         run: |
           echo "::group::Building extension zip archive"
-          npx web-ext build --config=web-ext.config.cjs
+          npx web-ext build
           ls -la web-ext-artifacts/
           echo "::endgroup::"
 
@@ -153,7 +153,7 @@ jobs:
             exit 1
           fi
 
-          SIGN_CMD="npx web-ext sign --config=web-ext.config.cjs --api-key=\"$AMO_ISSUER\" --api-secret=\"$AMO_SECRET\" --channel=\"$CHANNEL\" --timeout=15m"
+          SIGN_CMD="npx web-ext sign --api-key=\"$AMO_ISSUER\" --api-secret=\"$AMO_SECRET\" --channel=\"$CHANNEL\" --timeout=15m"
           
           if [ -n "$APPROVAL_NOTES" ]; then
             SIGN_CMD="$SIGN_CMD --approval-notes=\"$APPROVAL_NOTES\""

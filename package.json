@@ -5,10 +5,33 @@
   "scripts": {
     "lint": "web-ext lint",
     "lint:strict": "web-ext lint --warnings-as-errors=true",
-    "lint:json": "web-ext lint --output json > amo-lint-report.json || true",
+    "lint:json": "web-ext lint --output json > web-ext-artifacts/amo-lint-report.json || true",
     "build": "web-ext build --overwrite-dest",
     "sign:listed": "web-ext sign --channel=listed",
     "sign:unlisted": "web-ext sign --channel=unlisted"
+  },
+  "webExt": {
+    "sourceDir": ".",
+    "artifactsDir": "web-ext-artifacts",
+    "build": {
+      "overwriteDest": true
+    },
+    "ignoreFiles": [
+      ".git/**",
+      ".github/**",
+      "node_modules/**",
+      "package.json",
+      "package-lock.json",
+      "web-ext-artifacts/**",
+      "scripts/**",
+      "*.md",
+      "*.log",
+      "*.json.log",
+      "amo-lint-report.json",
+      "amo-sign-output.log",
+      "amo-sign-error.log",
+      "LICENSE"
+    ]
   },
   "keywords": [
     "leetcode",
