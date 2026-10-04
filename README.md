@@ -193,7 +193,7 @@ npm run lint:strict
 npm run build
 ```
 
-The production-ready bundle will be built in `web-ext-artifacts/leetcode_problem_copier-1.2.0.zip`.
+The production-ready bundle will be built in `web-ext-artifacts/leetcode_problem_copier-1.20.1.zip`.
 
 ---
 
@@ -209,7 +209,7 @@ This repository includes a GitHub Actions workflow [`.github/workflows/publish-a
 
 #### Triggering Releases
 * **On-Demand**: Go to **Actions ➔ Publish Firefox Add-on to AMO ➔ Run workflow** (choose `listed` store release or `unlisted` signed XPI).
-* **Release Tags**: Push a tag (`git tag v1.2.0 && git push origin v1.2.0`) to automatically sign, publish to AMO, and create a GitHub Release with `.zip` and `.xpi` assets.
+* **Release Tags**: Push a tag (`git tag v1.20.1 && git push origin v1.20.1`) to automatically sign, publish to AMO, and create a GitHub Release with `.zip` and `.xpi` assets.
 
 ---
 

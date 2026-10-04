@@ -252,8 +252,19 @@
     return cleanDescription(descEl);
   }
 
+  const UNICODE_SUPERSCRIPTS = {
+    '⁰': '^0', '¹': '^1', '²': '^2', '³': '^3', '⁴': '^4',
+    '⁵': '^5', '⁶': '^6', '⁷': '^7', '⁸': '^8', '⁹': '^9',
+    '⁺': '^+', '⁻': '^-', 'ⁿ': '^n', 'ⁱ': '^i',
+  };
+
   function cleanDescription(root) {
-    return domToText(root).replace(/\n{3,}/g, '\n\n').trim();
+    let text = domToText(root);
+    for (const [uni, asc] of Object.entries(UNICODE_SUPERSCRIPTS)) {
+      text = text.replaceAll(uni, asc);
+    }
+    text = text.replace(/\^{2,}/g, '^');
+    return text.replace(/\n{3,}/g, '\n\n').trim();
   }
 
   function domToText(node) {
@@ -269,6 +280,24 @@
     }
 
     if (['script', 'style', 'svg', 'img'].includes(tag)) return '';
+
+    if (tag === 'sup') {
+      let supText = '';
+      for (const child of node.childNodes) {
+        supText += domToText(child);
+      }
+      supText = supText.trim();
+      return supText ? `^${supText}` : '';
+    }
+
+    if (tag === 'sub') {
+      let subText = '';
+      for (const child of node.childNodes) {
+        subText += domToText(child);
+      }
+      subText = subText.trim();
+      return subText ? `[${subText}]` : '';
+    }
 
     const block = ['p', 'div', 'li', 'tr', 'br', 'h1', 'h2', 'h3',
                    'h4', 'h5', 'h6', 'pre', 'ul', 'ol'].includes(tag);
