@@ -8,8 +8,13 @@ amo-sign-output.log
 amo-sign-error.log
 *.log
 
+# Environment & Secrets
+.env
+.env.*
+
 # OS & Editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
