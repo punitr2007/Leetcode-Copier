@@ -8,7 +8,8 @@
     "lint:json": "web-ext lint --output json > web-ext-artifacts/amo-lint-report.json || true",
     "build": "web-ext build --overwrite-dest",
     "sign:listed": "web-ext sign --channel=listed",
-    "sign:unlisted": "web-ext sign --channel=unlisted"
+    "sign:unlisted": "web-ext sign --channel=unlisted",
+    "sign:env": "node --env-file=.env -e \"const {execSync}=require('child_process'); execSync('npx web-ext sign --api-key=\\\"' + process.env.AMO_JWT_ISSUER + '\\\" --api-secret=\\\"' + process.env.AMO_JWT_SECRET + '\\\" --channel=listed --approval-timeout=0', {stdio: 'inherit'});\""
   },
   "webExt": {
     "sourceDir": ".",
