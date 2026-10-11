@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LeetCode Problem Copier",
-  "version": "1.20.1",
-  "description": "1-click export for LeetCode problems & starter code with local offline AI Time and Space Complexity analysis (LM Studio).",
+  "version": "1.21.0",
+  "description": "1-click LeetCode problem exporter with AI complexity analysis — works locally via LM Studio or any cloud API (OpenAI, Groq, etc.).",
   "permissions": [
     "activeTab",
     "storage"

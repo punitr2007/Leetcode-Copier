@@ -125,7 +125,7 @@
     const complexityBtn = document.createElement('button');
     complexityBtn.id = 'lc-copier-complexity-btn';
     complexityBtn.className = 'lc-toolbar-btn lc-btn-secondary';
-    complexityBtn.title = 'Analyze Time & Space complexity using local LM Studio';
+    complexityBtn.title = 'Analyze Time & Space complexity using AI (Local or Cloud)';
 
     const zapIconSpan = document.createElement('span');
     zapIconSpan.className = 'lc-btn-icon';
@@ -151,7 +151,7 @@
     const settingsBtn = document.createElement('button');
     settingsBtn.id = 'lc-copier-settings-btn';
     settingsBtn.className = 'lc-toolbar-btn lc-btn-icon-only';
-    settingsBtn.title = 'LM Studio Settings';
+    settingsBtn.title = 'AI Settings';
     settingsBtn.appendChild(createGearIcon());
     settingsBtn.addEventListener('click', openSettingsModal);
 
@@ -587,7 +587,7 @@
 
   // ── Direct In-Tab LM Studio Client ───────────────────────────────────
 
-  async function directTestConnection(baseUrl) {
+  async function directTestConnection(baseUrl, apiKey) {
     const cleanUrl = sanitizeBaseUrl(baseUrl);
     const startTime = Date.now();
 
@@ -595,9 +595,12 @@
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+      const reqHeaders = { 'Accept': 'application/json' };
+      if (apiKey && apiKey.trim()) reqHeaders['Authorization'] = `Bearer ${apiKey.trim()}`;
+
       const response = await fetch(`${cleanUrl}/v1/models`, {
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        headers: reqHeaders,
         signal: controller.signal,
       });
 
@@ -628,9 +631,12 @@
           error: `Connection timed out after 10s connecting to ${cleanUrl}`,
         };
       }
+      const localHint = (!apiKey || !apiKey.trim())
+        ? ` Ensure LM Studio is running AND 'Enable CORS' is ON.`
+        : '';
       return {
         success: false,
-        error: `Could not connect to LM Studio at ${cleanUrl}. Ensure LM Studio local server is running AND 'Enable CORS' is toggled ON in LM Studio settings. (${err.message})`,
+        error: `Could not connect to ${cleanUrl}.${localHint} (${err.message})`,
       };
     }
   }
@@ -640,16 +646,22 @@
       baseUrl: 'http://127.0.0.1:1234',
       model: '',
       timeoutMs: 180000,
+      apiKey: '',
+      apiMode: 'local',
     });
 
     const baseUrl = sanitizeBaseUrl(config.baseUrl);
+    const apiKey = (config.apiKey || '').trim();
+    const isCloud = config.apiMode === 'cloud' && apiKey;
 
     let model = (config.model || '').trim();
     if (!model) {
       try {
+        const autoHeaders = { 'Accept': 'application/json' };
+        if (isCloud) autoHeaders['Authorization'] = `Bearer ${apiKey}`;
         const modelsRes = await fetch(`${baseUrl}/v1/models`, {
           method: 'GET',
-          headers: { 'Accept': 'application/json' },
+          headers: autoHeaders,
           signal: abortSignal,
         });
         if (modelsRes.ok) {
@@ -660,7 +672,7 @@
           }
         }
       } catch (e) {}
-      model = model || 'local-model';
+      model = model || (isCloud ? 'gpt-4o-mini' : 'local-model');
     }
 
     const systemPrompt = `You are an expert algorithmic complexity analyzer.
@@ -708,12 +720,14 @@ ${cleanCode}
     };
 
     const startTime = Date.now();
+    const fetchHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (isCloud) fetchHeaders['Authorization'] = `Bearer ${apiKey}`;
     const response = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
+      headers: fetchHeaders,
       body: JSON.stringify(requestBody),
       signal: abortSignal,
     });
@@ -723,9 +737,10 @@ ${cleanCode}
     if (!response.ok) {
       let errBody = '';
       try { errBody = await response.text(); } catch (e) {}
+      const provider = isCloud ? 'Cloud AI API' : 'LM Studio';
       return {
         success: false,
-        error: `LM Studio error (HTTP ${response.status}): ${errBody || response.statusText}`,
+        error: `${provider} error (HTTP ${response.status}): ${errBody || response.statusText}`,
       };
     }
 
@@ -1583,6 +1598,8 @@ ${cleanCode}
       model: '',
       timeoutMs: 60000,
       includeComplexityInCopy: false,
+      apiKey: '',
+      apiMode: 'local',
     });
 
     settingsModal = document.createElement('div');
@@ -1596,7 +1613,7 @@ ${cleanCode}
     header.className = 'lc-card-header';
     const modalTitle = document.createElement('div');
     modalTitle.className = 'lc-card-title';
-    modalTitle.textContent = '⚙️ LM Studio Configuration';
+    modalTitle.textContent = '⚙️ AI Configuration';
     header.appendChild(modalTitle);
 
     const closeBtn = document.createElement('button');
@@ -1608,7 +1625,35 @@ ${cleanCode}
     const body = document.createElement('div');
     body.className = 'lc-modal-body';
 
-    // Form Group 1: Base URL
+    // ── API Mode Toggle ──────────────────────────────────────────────────
+    const fgMode = document.createElement('div');
+    fgMode.className = 'lc-form-group';
+    const lblMode = document.createElement('label');
+    lblMode.textContent = 'AI Backend Mode';
+    const modeToggle = document.createElement('div');
+    modeToggle.className = 'lc-mode-toggle';
+    const modeLocal = document.createElement('button');
+    modeLocal.type = 'button';
+    modeLocal.id = 'lc-mode-local';
+    modeLocal.className = 'lc-mode-btn' + (config.apiMode !== 'cloud' ? ' active' : '');
+    modeLocal.textContent = '🖥️ Local (LM Studio)';
+    const modeCloud = document.createElement('button');
+    modeCloud.type = 'button';
+    modeCloud.id = 'lc-mode-cloud';
+    modeCloud.className = 'lc-mode-btn' + (config.apiMode === 'cloud' ? ' active' : '');
+    modeCloud.textContent = '☁️ Cloud API';
+    modeToggle.appendChild(modeLocal);
+    modeToggle.appendChild(modeCloud);
+    fgMode.appendChild(lblMode);
+    fgMode.appendChild(modeToggle);
+    body.appendChild(fgMode);
+
+    // ── Local section ───────────────────────────────────────────────────
+    const localSection = document.createElement('div');
+    localSection.id = 'lc-local-section';
+    localSection.style.display = config.apiMode === 'cloud' ? 'none' : 'block';
+
+    // Form Group 1: Base URL (local)
     const fg1 = document.createElement('div');
     fg1.className = 'lc-form-group';
     const lbl1 = document.createElement('label');
@@ -1626,10 +1671,76 @@ ${cleanCode}
     const strongPort = document.createElement('strong');
     strongPort.textContent = '1234';
     hint1.appendChild(strongPort);
+    hint1.appendChild(document.createTextNode('. Make sure CORS is enabled.'));
     fg1.appendChild(lbl1);
     fg1.appendChild(input1);
     fg1.appendChild(hint1);
-    body.appendChild(fg1);
+    localSection.appendChild(fg1);
+    body.appendChild(localSection);
+
+    // ── Cloud section ───────────────────────────────────────────────────
+    const cloudSection = document.createElement('div');
+    cloudSection.id = 'lc-cloud-section';
+    cloudSection.style.display = config.apiMode === 'cloud' ? 'block' : 'none';
+
+    // Cloud Base URL field
+    const fgCloudUrl = document.createElement('div');
+    fgCloudUrl.className = 'lc-form-group';
+    const lblCloudUrl = document.createElement('label');
+    lblCloudUrl.htmlFor = 'lc-cloud-url';
+    lblCloudUrl.textContent = 'API Base URL';
+    const inputCloudUrl = document.createElement('input');
+    inputCloudUrl.type = 'text';
+    inputCloudUrl.id = 'lc-cloud-url';
+    inputCloudUrl.className = 'lc-input';
+    // Reuse baseUrl — user can change to any OpenAI-compatible endpoint
+    const storedCloudUrl = (config.apiMode === 'cloud' && config.baseUrl !== 'http://127.0.0.1:1234')
+      ? config.baseUrl : 'https://api.openai.com';
+    inputCloudUrl.value = storedCloudUrl;
+    inputCloudUrl.placeholder = 'https://api.openai.com';
+    const hintCloudUrl = document.createElement('span');
+    hintCloudUrl.className = 'lc-field-hint';
+    hintCloudUrl.innerHTML = 'Works with any OpenAI-compatible endpoint: <strong>OpenAI</strong>, <strong>Anthropic</strong> (via proxy), <strong>Groq</strong>, <strong>Together AI</strong>, etc.';
+    fgCloudUrl.appendChild(lblCloudUrl);
+    fgCloudUrl.appendChild(inputCloudUrl);
+    fgCloudUrl.appendChild(hintCloudUrl);
+    cloudSection.appendChild(fgCloudUrl);
+
+    // API Key field
+    const fgApiKey = document.createElement('div');
+    fgApiKey.className = 'lc-form-group';
+    const lblApiKey = document.createElement('label');
+    lblApiKey.htmlFor = 'lc-api-key';
+    lblApiKey.textContent = 'API Key';
+    const inputApiKey = document.createElement('input');
+    inputApiKey.type = 'password';
+    inputApiKey.id = 'lc-api-key';
+    inputApiKey.className = 'lc-input';
+    inputApiKey.value = config.apiKey || '';
+    inputApiKey.placeholder = 'sk-... (stored locally in browser, never sent to any server other than the API endpoint)';
+    inputApiKey.autocomplete = 'off';
+    const hintApiKey = document.createElement('span');
+    hintApiKey.className = 'lc-field-hint';
+    hintApiKey.textContent = '🔒 Your key is stored only in this browser via browser.storage.local. It is never collected or logged.';
+    fgApiKey.appendChild(lblApiKey);
+    fgApiKey.appendChild(inputApiKey);
+    fgApiKey.appendChild(hintApiKey);
+    cloudSection.appendChild(fgApiKey);
+    body.appendChild(cloudSection);
+
+    // Mode toggle click handlers
+    modeLocal.addEventListener('click', () => {
+      modeLocal.classList.add('active');
+      modeCloud.classList.remove('active');
+      localSection.style.display = 'block';
+      cloudSection.style.display = 'none';
+    });
+    modeCloud.addEventListener('click', () => {
+      modeCloud.classList.add('active');
+      modeLocal.classList.remove('active');
+      cloudSection.style.display = 'block';
+      localSection.style.display = 'none';
+    });
 
     // Form Group 2: Model ID Override
     const fg2 = document.createElement('div');
@@ -1685,7 +1796,7 @@ ${cleanCode}
     const testBtn = document.createElement('button');
     testBtn.id = 'lc-test-conn-btn';
     testBtn.className = 'lc-btn-secondary lc-btn-sm';
-    testBtn.textContent = '🔌 Test LM Studio Connection';
+    testBtn.textContent = '🔌 Test Connection';
     const statusSpan = document.createElement('span');
     statusSpan.id = 'lc-test-status';
     statusSpan.className = 'lc-test-status';
@@ -1705,11 +1816,16 @@ ${cleanCode}
     saveBtn.className = 'lc-btn-primary lc-btn-sm';
     saveBtn.textContent = 'Save Settings';
     saveBtn.addEventListener('click', async () => {
-      const baseUrl = input1.value.trim() || 'http://127.0.0.1:1234';
+      const isCloudMode = modeCloud.classList.contains('active');
+      const baseUrl = isCloudMode
+        ? (inputCloudUrl.value.trim() || 'https://api.openai.com')
+        : (input1.value.trim() || 'http://127.0.0.1:1234');
       const model = input2.value.trim();
       const includeComplexityInCopy = chkInput.checked;
+      const apiKey = isCloudMode ? (inputApiKey.value.trim()) : '';
+      const apiMode = isCloudMode ? 'cloud' : 'local';
 
-      await saveStorageConfig({ baseUrl, model, includeComplexityInCopy });
+      await saveStorageConfig({ baseUrl, model, includeComplexityInCopy, apiKey, apiMode });
       showToast('Settings saved!', 'success');
       settingsModal.remove();
       settingsModal = null;
@@ -1726,16 +1842,20 @@ ${cleanCode}
 
     // Direct In-Tab Test Connection Handler
     testBtn.addEventListener('click', async () => {
-      const url = input1.value.trim() || 'http://127.0.0.1:1234';
+      const isCloudMode = modeCloud.classList.contains('active');
+      const url = isCloudMode
+        ? (inputCloudUrl.value.trim() || 'https://api.openai.com')
+        : (input1.value.trim() || 'http://127.0.0.1:1234');
+      const key = isCloudMode ? (inputApiKey.value.trim()) : '';
       statusSpan.className = 'lc-test-status lc-test-loading';
       statusSpan.textContent = 'Testing connection...';
       testBtn.disabled = true;
 
-      const res = await directTestConnection(url);
+      const res = await directTestConnection(url, key);
       testBtn.disabled = false;
       if (res && res.success) {
         statusSpan.className = 'lc-test-status lc-test-success';
-        statusSpan.textContent = ` Connected! (${res.latencyMs}ms) Active Model: ${res.activeModel}`;
+        statusSpan.textContent = `✅ Connected! (${res.latencyMs}ms) Active model: ${res.activeModel}`;
       } else {
         statusSpan.className = 'lc-test-status lc-test-error';
         statusSpan.textContent = `❌ ${res?.error || 'Connection failed'}`;
