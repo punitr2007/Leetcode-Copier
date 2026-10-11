@@ -645,7 +645,7 @@
     const config = await getStorageConfig({
       baseUrl: 'http://127.0.0.1:1234',
       model: '',
-      timeoutMs: 180000,
+      timeoutMs: 60000,
       apiKey: '',
       apiMode: 'local',
     });
@@ -653,27 +653,45 @@
     const baseUrl = sanitizeBaseUrl(config.baseUrl);
     const apiKey = (config.apiKey || '').trim();
     const isCloud = config.apiMode === 'cloud' && apiKey;
+    const isGoogle = baseUrl.includes('googleapis.com');
 
     let model = (config.model || '').trim();
     if (!model) {
-      try {
-        const autoHeaders = { 'Accept': 'application/json' };
-        if (isCloud) autoHeaders['Authorization'] = `Bearer ${apiKey}`;
-        const modelsRes = await fetch(`${baseUrl}/v1/models`, {
-          method: 'GET',
-          headers: autoHeaders,
-          signal: abortSignal,
-        });
-        if (modelsRes.ok) {
-          const modelsData = await modelsRes.json();
-          if (modelsData && Array.isArray(modelsData.data) && modelsData.data.length > 0) {
-            const chatModel = modelsData.data.find((m) => !m.id.toLowerCase().includes('embed'));
-            model = chatModel ? chatModel.id : modelsData.data[0].id;
+      if (isGoogle) {
+        // Default directly to ultra-fast and stable Gemini model
+        model = 'gemini-3.5-flash-lite';
+      } else {
+        try {
+          const autoHeaders = { 'Accept': 'application/json' };
+          if (isCloud) autoHeaders['Authorization'] = `Bearer ${apiKey}`;
+          const modelsRes = await fetch(`${baseUrl}/v1/models`, {
+            method: 'GET',
+            headers: autoHeaders,
+            signal: abortSignal,
+          });
+          if (modelsRes.ok) {
+            const modelsData = await modelsRes.json();
+            if (modelsData && Array.isArray(modelsData.data) && modelsData.data.length > 0) {
+              const chatModel = modelsData.data.find((m) => {
+                const id = (m.id || '').toLowerCase();
+                return !id.includes('embed') && !id.includes('tts') && !id.includes('2.5');
+              });
+              model = chatModel ? chatModel.id : modelsData.data[0].id;
+            }
           }
-        }
-      } catch (e) {}
-      model = model || (isCloud ? 'gpt-4o-mini' : 'local-model');
+        } catch (e) {}
+        model = model || (isCloud ? 'gpt-4o-mini' : 'local-model');
+      }
     }
+
+    // Strip leading "models/" prefix if present from Gemini endpoints
+    if (model.startsWith('models/')) {
+      model = model.replace(/^models\//, '');
+    }
+
+    // Update UI loading indicator dynamically
+    const serviceName = isGoogle ? 'Google Gemini' : (isCloud ? 'Cloud AI' : 'LM Studio');
+    updateComplexityLoading(`Analyzing with ${serviceName} (${model})...`, `Waiting for response from ${serviceName}...`);
 
     const systemPrompt = `You are an expert algorithmic complexity analyzer.
 Analyze the provided code carefully and determine its asymptotic Time and Space Complexity in standard Big-O notation.
@@ -725,19 +743,51 @@ ${cleanCode}
       'Accept': 'application/json',
     };
     if (isCloud) fetchHeaders['Authorization'] = `Bearer ${apiKey}`;
-    const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: fetchHeaders,
-      body: JSON.stringify(requestBody),
-      signal: abortSignal,
-    });
+
+    // Apply strict timeout: 45s for Cloud API, 120s for local inference
+    const maxWaitMs = isCloud ? 45000 : 120000;
+    const timeoutController = new AbortController();
+    const timeoutTimer = setTimeout(() => timeoutController.abort(), maxWaitMs);
+
+    const abortHandler = () => timeoutController.abort();
+    if (abortSignal) abortSignal.addEventListener('abort', abortHandler);
+
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: fetchHeaders,
+        body: JSON.stringify(requestBody),
+        signal: timeoutController.signal,
+      });
+    } catch (fetchErr) {
+      clearTimeout(timeoutTimer);
+      if (abortSignal) abortSignal.removeEventListener('abort', abortHandler);
+      if (abortSignal && abortSignal.aborted) {
+        throw new Error('Analysis cancelled by user');
+      }
+      if (fetchErr.name === 'AbortError') {
+        const hint = isGoogle ? ' Try setting Model ID to "gemini-3.5-flash-lite" in settings for ~2s instantaneous analysis.' : '';
+        return {
+          success: false,
+          error: `Request timed out after ${Math.round(maxWaitMs / 1000)}s.${hint}`,
+        };
+      }
+      return {
+        success: false,
+        error: `Network error connecting to ${baseUrl}: ${fetchErr.message}`,
+      };
+    } finally {
+      clearTimeout(timeoutTimer);
+      if (abortSignal) abortSignal.removeEventListener('abort', abortHandler);
+    }
 
     const latencyMs = Date.now() - startTime;
 
     if (!response.ok) {
       let errBody = '';
       try { errBody = await response.text(); } catch (e) {}
-      const provider = isCloud ? 'Cloud AI API' : 'LM Studio';
+      const provider = isCloud ? (isGoogle ? 'Google Gemini' : 'Cloud AI API') : 'LM Studio';
       return {
         success: false,
         error: `${provider} error (HTTP ${response.status}): ${errBody || response.statusText}`,
@@ -954,7 +1004,15 @@ ${cleanCode}
       return;
     }
 
-    renderComplexityLoading();
+    const config = await getStorageConfig({
+      baseUrl: 'http://127.0.0.1:1234',
+      model: '',
+      timeoutMs: 60000,
+      apiKey: '',
+      apiMode: 'local',
+    });
+
+    renderComplexityLoading(config);
 
     currentAbortController = new AbortController();
     const payload = { title, description, language, code };
@@ -1016,7 +1074,22 @@ ${cleanCode}
     return badge;
   }
 
-  function renderComplexityLoading() {
+  function updateComplexityLoading(titleText, hintText) {
+    if (!complexityCard) return;
+    const titleEl = complexityCard.querySelector('.lc-card-title');
+    if (titleEl && titleText) {
+      const dot = titleEl.querySelector('.lc-pulse-dot');
+      titleEl.textContent = '';
+      if (dot) titleEl.appendChild(dot);
+      titleEl.appendChild(document.createTextNode(' ' + titleText));
+    }
+    const hintEl = complexityCard.querySelector('.lc-loading-hint');
+    if (hintEl && hintText) {
+      hintEl.textContent = hintText;
+    }
+  }
+
+  function renderComplexityLoading(config) {
     closeComplexityCard();
 
     complexityCard = document.createElement('div');
@@ -1031,6 +1104,22 @@ ${cleanCode}
     };
     timerInterval = setInterval(updateTime, 1000);
 
+    const isCloud = config && config.apiMode === 'cloud' && (config.apiKey || '').trim();
+    let providerName = 'LM Studio';
+    let hintText = 'Running local inference on your GPU/CPU';
+
+    if (isCloud) {
+      const baseUrl = config.baseUrl || '';
+      let service = 'Cloud AI';
+      if (baseUrl.includes('googleapis.com')) service = 'Google Gemini';
+      else if (baseUrl.includes('openai.com')) service = 'OpenAI';
+      else if (baseUrl.includes('groq.com')) service = 'Groq';
+      else if (baseUrl.includes('together')) service = 'Together AI';
+
+      providerName = config.model ? `${service} (${config.model})` : service;
+      hintText = `Querying ${service} API...`;
+    }
+
     const header = document.createElement('div');
     header.className = 'lc-card-header';
 
@@ -1039,7 +1128,7 @@ ${cleanCode}
     const dot = document.createElement('span');
     dot.className = 'lc-pulse-dot';
     titleDiv.appendChild(dot);
-    titleDiv.appendChild(document.createTextNode(' Analyzing with LM Studio...'));
+    titleDiv.appendChild(document.createTextNode(` Analyzing with ${providerName}...`));
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'lc-close-btn';
@@ -1070,7 +1159,7 @@ ${cleanCode}
     timeSpan.textContent = '0s elapsed';
     const hintSpan = document.createElement('span');
     hintSpan.className = 'lc-loading-hint';
-    hintSpan.textContent = 'Running local inference on your GPU/CPU';
+    hintSpan.textContent = hintText;
     statusDiv.appendChild(timeSpan);
     statusDiv.appendChild(hintSpan);
     body.appendChild(statusDiv);
@@ -1728,20 +1817,6 @@ ${cleanCode}
     cloudSection.appendChild(fgApiKey);
     body.appendChild(cloudSection);
 
-    // Mode toggle click handlers
-    modeLocal.addEventListener('click', () => {
-      modeLocal.classList.add('active');
-      modeCloud.classList.remove('active');
-      localSection.style.display = 'block';
-      cloudSection.style.display = 'none';
-    });
-    modeCloud.addEventListener('click', () => {
-      modeCloud.classList.add('active');
-      modeLocal.classList.remove('active');
-      cloudSection.style.display = 'block';
-      localSection.style.display = 'none';
-    });
-
     // Form Group 2: Model ID Override
     const fg2 = document.createElement('div');
     fg2.className = 'lc-form-group';
@@ -1760,19 +1835,57 @@ ${cleanCode}
     input2.placeholder = 'Leave blank to auto-detect loaded model';
     const hint2 = document.createElement('span');
     hint2.className = 'lc-field-hint';
-    hint2.appendChild(document.createTextNode('Tip: '));
-    const strongModel = document.createElement('strong');
-    strongModel.textContent = 'qwen2.5-coder-3b-instruct';
-    hint2.appendChild(strongModel);
-    hint2.appendChild(document.createTextNode(' or '));
-    const strongModel2 = document.createElement('strong');
-    strongModel2.textContent = '1.5b';
-    hint2.appendChild(strongModel2);
-    hint2.appendChild(document.createTextNode(' provides ~3s instantaneous inference.'));
+
+    const updateModelHint = (isCloud) => {
+      hint2.textContent = '';
+      hint2.appendChild(document.createTextNode('Tip: '));
+      if (isCloud) {
+        hint2.appendChild(document.createTextNode('For Gemini: '));
+        const s1 = document.createElement('strong');
+        s1.textContent = 'gemini-3.5-flash-lite';
+        hint2.appendChild(s1);
+        hint2.appendChild(document.createTextNode(' (~2s). For OpenAI: '));
+        const s2 = document.createElement('strong');
+        s2.textContent = 'gpt-4o-mini';
+        hint2.appendChild(s2);
+        hint2.appendChild(document.createTextNode('. For Groq: '));
+        const s3 = document.createElement('strong');
+        s3.textContent = 'llama-3.3-70b-versatile';
+        hint2.appendChild(s3);
+        hint2.appendChild(document.createTextNode('.'));
+      } else {
+        const s1 = document.createElement('strong');
+        s1.textContent = 'qwen2.5-coder-3b-instruct';
+        hint2.appendChild(s1);
+        hint2.appendChild(document.createTextNode(' or '));
+        const s2 = document.createElement('strong');
+        s2.textContent = '1.5b';
+        hint2.appendChild(s2);
+        hint2.appendChild(document.createTextNode(' provides ~3s instantaneous inference in LM Studio.'));
+      }
+    };
+    updateModelHint(config.apiMode === 'cloud');
+
     fg2.appendChild(lbl2);
     fg2.appendChild(input2);
     fg2.appendChild(hint2);
     body.appendChild(fg2);
+
+    // Mode toggle click handlers
+    modeLocal.addEventListener('click', () => {
+      modeLocal.classList.add('active');
+      modeCloud.classList.remove('active');
+      localSection.style.display = 'block';
+      cloudSection.style.display = 'none';
+      updateModelHint(false);
+    });
+    modeCloud.addEventListener('click', () => {
+      modeCloud.classList.add('active');
+      modeLocal.classList.remove('active');
+      cloudSection.style.display = 'block';
+      localSection.style.display = 'none';
+      updateModelHint(true);
+    });
 
     // Form Group 3: Checkbox
     const fg3 = document.createElement('div');

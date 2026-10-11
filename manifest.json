@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LeetCode Problem Copier",
-  "version": "1.21.1",
+  "version": "1.21.2",
   "description": "1-click LeetCode problem exporter with AI complexity analysis — works locally via LM Studio or any cloud API (OpenAI, Groq, etc.).",
   "permissions": [
     "activeTab",
