@@ -815,6 +815,8 @@ ${cleanCode}
           optimizations: parsed.optimizations || '',
           modelUsed: model,
           latencyMs,
+          isCloud: !!isCloud,
+          serviceName: serviceName || (isCloud ? 'Cloud AI' : 'LM Studio'),
         },
       };
     }
@@ -831,6 +833,8 @@ ${cleanCode}
         modelUsed: model,
         latencyMs,
         isUnstructured: true,
+        isCloud: !!isCloud,
+        serviceName: serviceName || (isCloud ? 'Cloud AI' : 'LM Studio'),
       },
     };
   }
@@ -1332,7 +1336,11 @@ ${cleanCode}
     disclaimer.className = 'lc-disclaimer-banner';
     disclaimer.appendChild(document.createTextNode('✨ '));
     const strongEl = document.createElement('strong');
-    strongEl.textContent = 'Local AI Estimate (LM Studio)';
+    const isCloud = !!data.isCloud;
+    const providerLabel = isCloud
+      ? (data.serviceName ? `${data.serviceName} (${data.modelUsed})` : 'Cloud AI Estimate')
+      : 'Local AI Estimate (LM Studio)';
+    strongEl.textContent = providerLabel;
     disclaimer.appendChild(strongEl);
     disclaimer.appendChild(document.createTextNode(' • Always verify mathematical bounds'));
 
