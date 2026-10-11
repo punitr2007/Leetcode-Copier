@@ -1,6 +1,6 @@
 {
   "name": "leetcode-copier",
-  "version": "1.21.0",
+  "version": "1.21.1",
   "description": "1-click export for LeetCode problems & starter code with local offline AI Time and Space Complexity analysis (LM Studio).",
   "scripts": {
     "lint": "web-ext lint",
